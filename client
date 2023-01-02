@@ -1,0 +1,8 @@
+#!/usr/bin/php
+<?php
+
+use PushToLive\Client\Client as PtlClient;
+
+require_once("vendor/autoload.php");
+
+(new PtlClient())->run();

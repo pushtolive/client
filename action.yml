@@ -1,0 +1,9 @@
+name: "PushToLive Deploy"
+description: "Push your project to live!"
+outputs:
+  response:
+    description: "Eh"
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  #image: "ghcr.io/pushtolive/client"

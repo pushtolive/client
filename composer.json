@@ -1,0 +1,23 @@
+{
+    "name": "pushto.live/client",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "PushToLive\\Client\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Matthew Baggett",
+            "email": "matthew@baggett.me"
+        }
+    ],
+    "require": {
+        "guzzlehttp/guzzle": "^7.4",
+        "kint-php/kint": "^4.1",
+        "monolog/monolog": "^2.7",
+        "bramus/monolog-colored-line-formatter": "^3.0",
+        "ext-curl": "*",
+        "symfony/yaml": "^6.1"
+    }
+}
