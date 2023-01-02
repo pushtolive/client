@@ -7,16 +7,14 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use GuzzleHttp\Client as Guzzle;
 use Symfony\Component\Yaml\Yaml;
+use Env\Env;
 
 class Client{
 
     protected Logger $logger;
     protected array $credentials;
     protected Guzzle $guzzle;
-    protected array $defaultConfig = [
-        'ENDPOINT' => 'http://pushto.live/',
-        'CURL_DEBUG' => "no",
-    ];
+    protected array $defaultConfig = [];
     protected array $config;
     private string $identityUsername;
     private string $identityEmail;
@@ -26,6 +24,10 @@ class Client{
     private array $appYaml;
 
     public function __construct(){
+        $this->defaultConfig = [
+            'ENDPOINT' => Env::get("ENDPOINT") ?? 'http://pushto.live/',
+            'CURL_DEBUG' => "no",
+        ];
         $this->logger = new Logger("PTL-Client");
         // Configure a pretty CLI Handler
         $cliHandler = new StreamHandler('php://stdout', Logger::DEBUG);
@@ -62,11 +64,21 @@ class Client{
     }
 
     public function readCredentials() : void {
-        if(!file_exists("/config/credentials")){
-            $this->logger->critical("Cannot find credentials file!");
-            exit(1);
+
+        if(file_exists("/config/credentials")){
+            $this->credentials = parse_ini_file("/config/credentials");
+            return;
         }
-        $this->credentials = parse_ini_file("/config/credentials");
+
+        if(Env::get('ACCESS_KEY') && Env::get('SECRET_KEY')){
+            $this->credentials['ACCESS_KEY'] = Env::get('ACCESS_KEY');
+            $this->credentials['SECRET_KEY'] = Env::get('SECRET_KEY');
+            return;
+        }
+
+        $this->logger->critical("Cannot find credentials file or ACCESS_KEY and SECRET_KEY!");
+
+        exit(1);
     }
 
     public function validateCredentials() : void {

@@ -13,11 +13,13 @@
         }
     ],
     "require": {
+        "php": ">=8.1",
         "guzzlehttp/guzzle": "^7.4",
         "kint-php/kint": "^4.1",
         "monolog/monolog": "^2.7",
         "bramus/monolog-colored-line-formatter": "^3.0",
         "ext-curl": "*",
-        "symfony/yaml": "^6.1"
+        "symfony/yaml": "^6.1",
+        "oscarotero/env": "^2.1"
     }
 }
