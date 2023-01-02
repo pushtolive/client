@@ -20,7 +20,11 @@ class Client{
     private string $identityEmail;
     private string $identityOrgName;
 
-    private string $appYamlPath = "ptl.yml";
+    private array $appYamlPaths = [
+        "/app/ptl.yml",
+        "/context/ptl.yml",
+        "/github/workspace/ptl.yml",
+    ];
     private array $appYaml;
 
     public function __construct(){
@@ -95,11 +99,15 @@ class Client{
     }
 
     public function readApp() : void {
-        $fullFilePath = sprintf("/context/%s", $this->appYamlPath);
-        if(!file_exists($fullFilePath)){
-            $this->logger->critical(sprintf("Cant find %s", $this->appYamlPath));
+        foreach($this->appYamlPaths as $appYamlPath){
+            if(file_exists($appYamlPath)){
+                $this->logger->debug(sprintf("Found config: %s", $appYamlPath));
+                $this->appYaml = Yaml::parseFile($appYamlPath);
+                return;
+            }
         }
-        $this->appYaml = Yaml::parseFile($fullFilePath);
+        $this->logger->critical(sprintf("Cant find config in any path: %s", implode(", ", $this->appYamlPaths)));
+        exit(1);
     }
 
     public function deployApp() : void {
