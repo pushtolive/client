@@ -116,8 +116,16 @@ class Client{
 
     public function deployApp() : void {
         $this->logger->info(sprintf("Submitting '%s' to deploy", $this->appYaml['name']));
+        if($this->hasRepoContext()){
+            $this->logger->info(sprintf(" > Context is %s/%s", $this->repoContextType, $this->repoContextName));
+            $this->appYaml['context'] = [
+                'type' => $this->repoContextType,
+                'name' => $this->repoContextName,
+            ];
+        }
         try {
-            $deployResponse = $this->guzzle->put("v0/deploy", ['body' => Yaml::dump($this->appYaml)]);
+            $deployBody = Yaml::dump($this->appYaml);
+            $deployResponse = $this->guzzle->put("v0/deploy", ['body' => $deployBody]);
         }catch(ServerException $serverException){
             $this->logger->critical($serverException->getResponse()->getBody());
             exit(1);
@@ -143,7 +151,22 @@ class Client{
         }
     }
 
+    protected ?string $repoContextType = null;
+    protected ?string $repoContextName = null;
+
+    protected function hasRepoContext() : bool {
+        if($this->repoContextType !== null && $this->repoContextName !== null){
+            return true;
+        }
+        return false;
+    }
+    private function determineRepositoryContext() : void {
+       $this->repoContextType = Env::get("GITHUB_REF_TYPE");
+       $this->repoContextName = Env::get("GITHUB_REF_NAME");
+    }
+
     public function run() : void {
+        $this->determineRepositoryContext();
         $this->readApp();
         $this->deployApp();
     }

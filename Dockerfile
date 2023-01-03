@@ -4,5 +4,5 @@ LABEL maintainer="Matthew Baggett <matthew@baggett.me>" \
       org.opencontainers.image.source="https://github.com/pushtolive/pushtolive"
 COPY . /app
 RUN composer install && \
-    chmod +x /app/client
-ENTRYPOINT /app/client
+    chmod +x /app/client /app/entrypoint.sh
+ENTRYPOINT /app/entrypoint.sh
