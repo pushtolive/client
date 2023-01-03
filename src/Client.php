@@ -78,9 +78,9 @@ class Client{
             return;
         }
 
-        if(Env::get('ACCESS_KEY') && Env::get('SECRET_KEY')){
-            $this->credentials['ACCESS_KEY'] = Env::get('ACCESS_KEY');
-            $this->credentials['SECRET_KEY'] = Env::get('SECRET_KEY');
+        if(Env::get('PTL_ACCESS_KEY') && Env::get('PTL_SECRET_KEY')){
+            $this->credentials['ACCESS_KEY'] = Env::get('PTL_ACCESS_KEY');
+            $this->credentials['SECRET_KEY'] = Env::get('PTL_SECRET_KEY');
             return;
         }
 
