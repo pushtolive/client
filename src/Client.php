@@ -3,6 +3,7 @@ namespace PushToLive\Client;
 
 use Bramus\Monolog\Formatter\ColoredLineFormatter;
 use Bramus\Monolog\Formatter\ColorSchemes\TrafficLight;
+use GuzzleHttp\Exception\ServerException;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use GuzzleHttp\Client as Guzzle;
@@ -20,17 +21,18 @@ class Client{
     private string $identityEmail;
     private string $identityOrgName;
 
-    private array $appYamlPaths = [
-        "/app/ptl.yml",
-        "/context/ptl.yml",
-        "/github/workspace/ptl.yml",
-    ];
+    private array $appYamlPaths;
     private array $appYaml;
 
     public function __construct(){
         $this->defaultConfig = [
-            'ENDPOINT' => Env::get("ENDPOINT") ?? 'http://pushto.live/',
+            'ENDPOINT' => Env::get("ENDPOINT") ?? 'http://api.pushto.live/',
             'CURL_DEBUG' => "no",
+        ];
+        $this->appYamlPaths = [
+            "/app/ptl.yml",
+            "/context/ptl.yml",
+            Env::get("GITHUB_WORKSPACE") . "/ptl.yml" ?? "/github/workspace/ptl.yml",
         ];
         $this->logger = new Logger("PTL-Client");
         // Configure a pretty CLI Handler
@@ -60,7 +62,9 @@ class Client{
                 "Access-Key" => $this->credentials['ACCESS_KEY'],
                 "Secret-Key" => $this->credentials['SECRET_KEY'],
             ],
-            'curl' => [CURLOPT_RESOLVE => ['api.pushto.local:9090:172.17.0.1']],
+            'curl' => [
+                #CURLOPT_RESOLVE => ['api.pushto.local:80:172.17.0.1']
+            ],
             'debug' => $this->config['CURL_DEBUG'] == 'yes',
         ]);
 
@@ -112,7 +116,12 @@ class Client{
 
     public function deployApp() : void {
         $this->logger->info(sprintf("Submitting '%s' to deploy", $this->appYaml['name']));
-        $deployResponse = $this->guzzle->put("v0/deploy", ['body' => Yaml::dump($this->appYaml)]);
+        try {
+            $deployResponse = $this->guzzle->put("v0/deploy", ['body' => Yaml::dump($this->appYaml)]);
+        }catch(ServerException $serverException){
+            $this->logger->critical($serverException->getResponse()->getBody());
+            exit(1);
+        }
 
         $deployResponse = $deployResponse->getBody()->getContents();
         \Kint::dump($deployResponse);
