@@ -3,6 +3,7 @@ namespace PushToLive\Client;
 
 use Bramus\Monolog\Formatter\ColoredLineFormatter;
 use Bramus\Monolog\Formatter\ColorSchemes\TrafficLight;
+use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ServerException;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
@@ -46,14 +47,15 @@ class Client{
         $cliHandler->setFormatter($cliFormatter);
         $this->logger->pushHandler($cliHandler);
 
-        $this->logger->info("Running PushToLive!");
-
         if(file_exists("/config/config")) {
             $this->config = array_merge($this->defaultConfig, parse_ini_file("/config/config"));
             $this->logger->debug("Loaded overriding config file.");
         }else{
             $this->config = $this->defaultConfig;
         }
+
+        $this->logger->info("Running PushToLive!");
+        $this->logger->debug(sprintf("Endpoint is %s", $this->config['ENDPOINT']));
 
         $this->readCredentials();
         $this->guzzle = new Guzzle([
@@ -114,6 +116,53 @@ class Client{
         exit(1);
     }
 
+    public function doesInstanceExist() : bool{
+        try {
+            $instanceInfo = $this->guzzle->get(sprintf("v0/projects/%s/%s/%s", $this->appYaml['name'], $this->repoContextType, $this->repoContextName));
+        }catch(ServerException $serverException){
+            $this->logger->critical($serverException->getResponse()->getBody());
+            exit(1);
+        }catch(ClientException $clientException){
+            if($clientException->getResponse()->getStatusCode() ==404){
+                return false;
+            }
+            throw $clientException;
+        }
+        //$instanceInfo = $instanceInfo->getBody()->getContents();
+
+        return true;
+    }
+    public function undeployApp() : void {
+
+        if(!$this->hasRepoContext()){
+            $this->logger->critical("Cannot undeploy an app that doesn't have a repo context");
+            exit(1);
+        }
+
+        $this->logger->info(sprintf("Terminating '%s' (%s %s).", $this->appYaml['name'], $this->repoContextType, $this->repoContextName));
+
+        if(!$this->doesInstanceExist()){
+            $this->logger->warning(sprintf("The service we were supposed to terminate (%s %s %s) does not exist.", $this->appYaml['name'], $this->repoContextType, $this->repoContextName));
+            return;
+        }
+
+        try {
+            $undeployResponse = $this->guzzle->delete(sprintf("v0/projects/%s/%s/%s", $this->appYaml['name'], $this->repoContextType, $this->repoContextName));
+        }catch(ServerException $serverException){
+            $this->logger->critical($serverException->getResponse()->getBody());
+            exit(1);
+        }
+        $undeployResponse = json_decode($undeployResponse->getBody()->getContents());
+        if(isset($this->Deleted)) {
+            $this->logger->info("Services terminating:");
+            foreach ($undeployResponse->Deleted->Service as $service) {
+                $this->logger->info(sprintf(" > %s", $service->Name));
+            }
+        }else{
+            $this->logger->debug("Nothing to terminate.");
+        }
+
+    }
     public function deployApp() : void {
         $this->logger->info(sprintf("Submitting '%s' to deploy", $this->appYaml['name']));
         if($this->hasRepoContext()){
@@ -132,7 +181,6 @@ class Client{
         }
 
         $deployResponse = $deployResponse->getBody()->getContents();
-        \Kint::dump($deployResponse);
 
         $deployResponse = json_decode($deployResponse);
 
@@ -144,7 +192,7 @@ class Client{
             \Kint::dump($deployResponse);
             exit(1);
         }
-        \Kint::dump($deployResponse);
+
         $this->logger->info("Services deploying:");
         foreach($deployResponse->Services as $service){
             $this->logger->info(sprintf(" > %s", $service->Name));
@@ -168,6 +216,15 @@ class Client{
     public function run() : void {
         $this->determineRepositoryContext();
         $this->readApp();
-        $this->deployApp();
+        $event = Env::get('GITHUB_EVENT_NAME') ?? 'push';
+        switch($event){
+            case 'delete':
+                $this->undeployApp();
+                break;
+            case 'push':
+                $this->deployApp();
+                break;
+        }
+
     }
 }

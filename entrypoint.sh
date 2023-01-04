@@ -1,3 +1,3 @@
 #!/bin/bash
-printenv | sort
+#printenv | sort
 /app/client
