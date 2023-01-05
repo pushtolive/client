@@ -163,6 +163,19 @@ class Client{
         }
 
     }
+
+    public function findZipPacks() : array
+    {
+        \Kint::dump($this->appYaml);
+        foreach ($this->appYaml['services'] as $serviceName => $configuration) {
+            if(isset($configuration['build'])){
+                $this->logger->info(sprintf("Found path to zippack: %s", realpath($configuration['build'])));
+                $zipPack = $this->zipPackPath($configuration['build']);
+            }
+        }
+        exit;
+
+    }
     public function deployApp() : void {
         $this->logger->info(sprintf("Submitting '%s' to deploy", $this->appYaml['name']));
         if($this->hasRepoContext()){
@@ -172,6 +185,11 @@ class Client{
                 'name' => $this->repoContextName,
             ];
         }
+
+        // Scan for paths to zip-pack.
+        $this->findZipPacks();
+
+        // Send deploy to server
         try {
             $deployBody = Yaml::dump($this->appYaml);
             $deployResponse = $this->guzzle->put("v0/deploy", ['body' => $deployBody]);
