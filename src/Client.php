@@ -3,13 +3,20 @@ namespace PushToLive\Client;
 
 use Bramus\Monolog\Formatter\ColoredLineFormatter;
 use Bramus\Monolog\Formatter\ColorSchemes\TrafficLight;
+use ChrisUllyott\FileSize;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ServerException;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
+use League\Flysystem\ZipArchive\FilesystemZipArchiveProvider;
+use League\Flysystem\ZipArchive\ZipArchiveAdapter;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use GuzzleHttp\Client as Guzzle;
 use Symfony\Component\Yaml\Yaml;
 use Env\Env;
+use GuzzleHttp\Psr7;
 
 class Client{
 
@@ -164,17 +171,73 @@ class Client{
 
     }
 
-    public function findZipPacks() : array
+    protected function zipPackPath(string $path) : string {
+        // Create access to local filesystem
+        $onDisk = new LocalFilesystemAdapter($path);
+        $onDiskFs = new Filesystem($onDisk);
+
+        // Create the zippack
+        $zipPackFileName = tempnam("/tmp", "ptlz_") . ".zip";
+        $archiveProvider = new FilesystemZipArchiveProvider($zipPackFileName);
+        $zipPack = new ZipArchiveAdapter($archiveProvider);
+        $zipPackFs = new Filesystem($zipPack);
+
+        $ignoreListGlobs = [
+            ".git/*",
+            ".github/*",
+            ".gitignore",
+            ".gitmodules",
+            "ptl.yml",
+        ];
+
+        // Iterate files locally and stuff them in the zippack
+        foreach($onDiskFs->listContents("/", Filesystem::LIST_DEEP) as $file){
+            /** @var $file FileAttributes */
+            $ignore = false;
+            // If the file matches our list of ignore globs, ignore it
+            foreach($ignoreListGlobs as $glob){
+                if(fnmatch($glob, $file->path())){
+                    $ignore = true;
+                }
+            }
+            // If the file is actually a directory, ignore it
+            if($file->isDir()){
+                $ignore = true;
+            }
+
+            // If we're ignoring it, jump out now.
+            if($ignore){
+                continue;
+            }
+
+            // Alls cool, ship it
+            $this->logger->debug(sprintf(" > Found %s", $file->path()));
+            $zipPackFs->writeStream($file->path(), $onDiskFs->readStream($file->path()));
+        }
+
+        // Force save to disk
+        unset($zipPackFs, $zipPack);
+
+        return $zipPackFileName;
+    }
+    protected function findZipPacks() : array
     {
-        \Kint::dump($this->appYaml);
+        $zipPacks = [];
         foreach ($this->appYaml['services'] as $serviceName => $configuration) {
             if(isset($configuration['build'])){
                 $this->logger->info(sprintf("Found path to zippack: %s", realpath($configuration['build'])));
-                $zipPack = $this->zipPackPath($configuration['build']);
+                $path = $this->zipPackPath(realpath($configuration['build']));
+                $size = new FileSize(filesize($path));
+                $this->logger->debug(sprintf("  > Resulting Zippack is %s",$size->asAuto()));
+                $zipPacks[$serviceName] = [
+                    'name' => $configuration['build'],
+                    //'contents' => file_get_contents($path),
+                    'contents' => base64_encode(file_get_contents($path)),
+                    //'filename' => basename($path),
+                ];
             }
         }
-        exit;
-
+        return $zipPacks;
     }
     public function deployApp() : void {
         $this->logger->info(sprintf("Submitting '%s' to deploy", $this->appYaml['name']));
@@ -187,32 +250,42 @@ class Client{
         }
 
         // Scan for paths to zip-pack.
-        $this->findZipPacks();
+        foreach($this->findZipPacks() as $service => $zipPack){
+            $this->appYaml['services'][$service]['build'] = [
+                'context' => $this->appYaml['services'][$service]['build'],
+                'zippack' => $zipPack['contents'],
+            ];
+        }
+
+        \Kint::dump($this->appYaml);
 
         // Send deploy to server
+        $this->logger->info("Sending request to PushTolive...");
         try {
             $deployBody = Yaml::dump($this->appYaml);
-            $deployResponse = $this->guzzle->put("v0/deploy", ['body' => $deployBody]);
+            $deployResponse = $this->guzzle->put("v0/deploy", [
+                'body' => $deployBody,
+                'debug' => true
+            ]);
         }catch(ServerException $serverException){
             $this->logger->critical($serverException->getResponse()->getBody());
             exit(1);
         }
 
-        $deployResponse = $deployResponse->getBody()->getContents();
+        $deployResponseJson = $deployResponse->getBody()->getContents();
 
-        $deployResponse = json_decode($deployResponse);
-
-        if(!$deployResponse->Status == 'Okay'){
+        $deploy = json_decode($deployResponseJson);
+        if(!$deploy->Status == 'Okay'){
             $this->logger->critical(sprintf("Failed to deploy!"));
-            if(isset($deployResponse->Reason)){
-                $this->logger->critical($deployResponse->Reason);
+            if(isset($deploy->Reason)){
+                $this->logger->critical($deploy->Reason);
             }
-            \Kint::dump($deployResponse);
+            \Kint::dump($deploy);
             exit(1);
         }
 
         $this->logger->info("Services deploying:");
-        foreach($deployResponse->Services as $service){
+        foreach($deploy->Services as $service){
             $this->logger->info(sprintf(" > %s", $service->Name));
         }
     }

@@ -20,6 +20,9 @@
         "bramus/monolog-colored-line-formatter": "^3.0",
         "ext-curl": "*",
         "symfony/yaml": "^6.1",
-        "oscarotero/env": "^2.1"
+        "oscarotero/env": "^2.1",
+        "league/flysystem": "^3.12",
+        "league/flysystem-ziparchive": "^3.12",
+        "chrisullyott/php-filesize": "^4.2"
     }
 }
